@@ -1,0 +1,3 @@
+﻿http://shell-storm.org/online/Online-Assembler-and-Disassembler/?inst=mul+rdx&arch=x86-64&as_format=inline#assembly
+
+najważniejszy jest plik DLXJITx64.cpp

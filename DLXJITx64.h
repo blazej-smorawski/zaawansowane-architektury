@@ -148,6 +148,10 @@ class DLXJITx64 :
 	void writeSIB(uint8_t scale, uint8_t index, uint8_t base);
 
 	void writeAdd(Reg64 dest, int32_t imm32);
+	void writeAdd(Reg64 dest, Reg64 src);
+	void writeXor(Reg64 dest, Reg64 src);
+	void writeMul(Reg64 src);
+	void writeBswap(Reg32 src);
 	void writeSub(Reg64 dest, int32_t imm32);
 	void writeMovR64toR64(Reg64 dest, Reg64 op);
 	void writeMovImm32toR64(Reg64 dest, int32_t imm32);
@@ -166,6 +170,7 @@ class DLXJITx64 :
 	void writePush(Reg64 dest);
 
 	void writeJLE(int32_t offset);
+	void writeJGE(int32_t offset);
 
 	void writeRet();
 

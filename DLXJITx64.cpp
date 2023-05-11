@@ -127,6 +127,32 @@ void DLXJITx64::writeAdd(Reg64 dest, int32_t imm32)
 	serialize(rawCode, imm32);
 }
 
+void DLXJITx64::writeAdd(Reg64 dest, Reg64 src)
+{
+	writeREXPrefix(true, false, false, dest > 0x7);
+	rawCode.push_back(0x01);
+	writeModRM(REGISTER, src, dest);
+}
+
+void DLXJITx64::writeXor(Reg64 dest, Reg64 src)
+{
+	writeREXPrefix(true, false, false, dest > 0x7);
+	rawCode.push_back(0x31);
+	writeModRM(REGISTER, src, dest);
+}
+
+void DLXJITx64::writeMul(Reg64 src)
+{
+	writeREXPrefix(true, false, false, src > 0x7);
+	rawCode.push_back(0xf7);
+	writeModRM(REGISTER, 4, src);
+}
+
+void DLXJITx64::writeBswap(Reg32 src)
+{
+	rawCode.push_back(0x0f);
+	writeModRM(REGISTER, 1, src);
+}
 
 void DLXJITx64::writeSub(Reg64 dest, int32_t imm32)
 {
@@ -212,7 +238,11 @@ void DLXJITx64::writeMovSXDMem32toReg64(Reg64 dest, int32_t offset, SIBScale sca
 
 void DLXJITx64::writeMovReg32toMem32(int32_t offset, Reg64 index, Reg32 source)
 {
-	//TODO: Uzupe³niæ
+	if (source > 0x7 || index > 0x7)
+		writeREXPrefix(false, source > 0x7, index > 0x7, false);
+	rawCode.push_back(0x89);
+	writeModRM(REGISTER_ADDRESSING_DISP8, source, 0x5);
+	rawCode.push_back((byte)offset);
 }
 
 void DLXJITx64::writeMovReg32toMem32(int32_t offset, SIBScale scale, Reg64 index, Reg64 base, Reg32 source)
@@ -313,6 +343,13 @@ void DLXJITx64::writeJLE(int32_t offset)
 	serialize(rawCode, offset);
 }
 
+void DLXJITx64::writeJGE(int32_t offset)
+{
+	rawCode.push_back(0x0f);
+	rawCode.push_back(0x8d);
+	serialize(rawCode, offset);
+}
+
 void DLXJITx64::writeRet()
 {
 	rawCode.push_back(0xC3);
@@ -331,7 +368,35 @@ void DLXJITx64::compileDLXInstruction(const DLXJITCodLine& line)
 			int s2 = getDLXRegisterNumber(instr->reg(1));
 			writeMovSXDMem32toReg64(RAX, getDLXRegisterOffsetOnStack(s1), RBP); //Odczyt pierwszego rejestru Ÿród³owego DLX
 			writeMovSXDMem32toReg64(RDX, getDLXRegisterOffsetOnStack(s2), RBP); //Odczyt drugiego rejestru Ÿród³owego DLX
-			//writeAdd(RAX, RDX);
+			writeAdd(RAX, RDX);
+			writeMovReg32toMem32(getDLXRegisterOffsetOnStack(destination), RBP, EAX); //Zapis wyniku
+		}
+	}
+	else if (line.textInstruction->opcode() == "XOR")
+	{
+		shared_ptr<DLXRTypeTextInstruction> instr = dynamic_pointer_cast<DLXRTypeTextInstruction>(line.textInstruction);
+		int destination = getDLXRegisterNumber(instr->reg(2));
+		if (destination > 0) //Zapisywanie do rejsetru R0 jest niedozwolone
+		{
+			int s1 = getDLXRegisterNumber(instr->reg(0));
+			int s2 = getDLXRegisterNumber(instr->reg(1));
+			writeMovSXDMem32toReg64(RAX, getDLXRegisterOffsetOnStack(s1), RBP); //Odczyt pierwszego rejestru Ÿród³owego DLX
+			writeMovSXDMem32toReg64(RDX, getDLXRegisterOffsetOnStack(s2), RBP); //Odczyt drugiego rejestru Ÿród³owego DLX
+			writeXor(RAX, RDX);
+			writeMovReg32toMem32(getDLXRegisterOffsetOnStack(destination), RBP, EAX); //Zapis wyniku
+		}
+	}
+	else if (line.textInstruction->opcode() == "MUL")
+	{
+		shared_ptr<DLXRTypeTextInstruction> instr = dynamic_pointer_cast<DLXRTypeTextInstruction>(line.textInstruction);
+		int destination = getDLXRegisterNumber(instr->reg(2));
+		if (destination > 0) //Zapisywanie do rejsetru R0 jest niedozwolone
+		{
+			int s1 = getDLXRegisterNumber(instr->reg(0));
+			int s2 = getDLXRegisterNumber(instr->reg(1));
+			writeMovSXDMem32toReg64(RAX, getDLXRegisterOffsetOnStack(s1), RBP); //Odczyt pierwszego rejestru Ÿród³owego DLX
+			writeMovSXDMem32toReg64(RDX, getDLXRegisterOffsetOnStack(s2), RBP); //Odczyt drugiego rejestru Ÿród³owego DLX
+			writeMul(RDX);
 			writeMovReg32toMem32(getDLXRegisterOffsetOnStack(destination), RBP, EAX); //Zapis wyniku
 		}
 	}
@@ -347,6 +412,18 @@ void DLXJITx64::compileDLXInstruction(const DLXJITCodLine& line)
 			writeMovReg32toMem32(getDLXRegisterOffsetOnStack(destination), RBP, EAX); //Zapis wyniku
 		}
 	}
+	else if (line.textInstruction->opcode() == "SUBI")
+	{
+		shared_ptr<DLXITypeTextInstruction> instr = dynamic_pointer_cast<DLXITypeTextInstruction>(line.textInstruction);
+		int destination = getDLXRegisterNumber(instr->reg(1));
+		if (destination > 0) //Zapisywanie do rejsetru R0 jest niedozwolone
+		{
+			int s1 = getDLXRegisterNumber(instr->reg(0));
+			writeMovSXDMem32toReg64(RAX, getDLXRegisterOffsetOnStack(s1), RBP); //Odczyt pierwszego rejestru Ÿród³owego DLX
+			writeSub(RAX, instr->immediate());
+			writeMovReg32toMem32(getDLXRegisterOffsetOnStack(destination), RBP, EAX); //Zapis wyniku
+		}
+	}
 	else if (line.textInstruction->opcode() == "LDW")
 	{
 		shared_ptr<DLXMTypeTextInstruction> instr = dynamic_pointer_cast<DLXMTypeTextInstruction>(line.textInstruction);
@@ -357,10 +434,21 @@ void DLXJITx64::compileDLXInstruction(const DLXJITCodLine& line)
 			int offset = instr->baseAddress();
 			writeMovSXDMem32toReg64(RDX, getDLXRegisterOffsetOnStack(index), RBP); //Odczyt rejsetru indeksuj¹cego DLX
 			writeMovMem32toReg32(EAX, offset, x1, RDX, DATA_POINTER_REGISTER); //Odczyt danych z pamiêci
-			//writeBswap(EAX); //Zamiana endianów
-			//Niepotrzebne: writeMovSXDReg32toReg64(RAX, EAX); //Rozszerzanie liczby to 64 bitów
+			writeBswap(EAX); //Zamiana endianów
+			//Niepotrzebne: writeMovSXDReg32toReg64(RAX, EAX); //Rozsze¿anie liczby to 64 bitów
 			writeMovReg32toMem32(getDLXRegisterOffsetOnStack(destination), RBP, EAX); //Zapis wyniku
 		}
+	}
+	else if (line.textInstruction->opcode() == "STW")
+	{
+		shared_ptr<DLXMTypeTextInstruction> instr = dynamic_pointer_cast<DLXMTypeTextInstruction>(line.textInstruction);
+		int source = getDLXRegisterNumber(instr->dataRegister());
+		int index = getDLXRegisterNumber(instr->indexRegister());
+		int offset = instr->baseAddress();
+		writeMovSXDMem32toReg64(RAX, getDLXRegisterOffsetOnStack(source), RBP); //Odczyt zrodla DLX do RAX
+		writeBswap(EAX); //Zamiana endianów
+		writeMovSXDMem32toReg64(RDX, getDLXRegisterOffsetOnStack(index), RBP); //Odczyt rejsetru indeksuj¹cego DLX do RDX
+		writeMovReg32toMem32(offset, x1, RDX, DATA_POINTER_REGISTER, EAX); // zapis wyniku
 	}
 	else if (line.textInstruction->opcode() == "BRLE")
 	{
@@ -376,6 +464,21 @@ void DLXJITx64::compileDLXInstruction(const DLXJITCodLine& line)
 		else
 			jumpOffsetsToRepair.push_back({ instr, rawCode.size() }); //Skok w przód!
 		writeJLE(offset);
+	}
+	else if (line.textInstruction->opcode() == "BRGE")
+	{
+		shared_ptr<DLXJTypeTextInstruction> instr = dynamic_pointer_cast<DLXJTypeTextInstruction>(line.textInstruction);
+		int branch = getDLXRegisterNumber(instr->branchRegister());
+
+		writeMovSXDMem32toReg64(RAX, getDLXRegisterOffsetOnStack(branch), RBP); //Odczyt rejestru DLX zawieraj¹cego warunek skoku 
+		//writeCmp(RAX, 0);
+		int32_t offset = 0;
+		auto destDlxInstr = labelDictionary[instr->label()];
+		if (dlxOffsetsInRawCode.size() > destDlxInstr)
+			offset = dlxOffsetsInRawCode[destDlxInstr] - (rawCode.size() + 6);
+		else
+			jumpOffsetsToRepair.push_back({ instr, rawCode.size() }); //Skok w przód!
+		writeJGE(offset);
 	}
 	else if (line.textInstruction->opcode() == "NOP")
 	{
